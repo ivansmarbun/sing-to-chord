@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sing to Chord</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --card: #ffffff;
+    --ink: #1d1d1b;
+    --muted: #6a6a64;
+    --line: #e1dfd8;
+    --accent: #c2410c;
+    --accent-ink: #ffffff;
+    --good: #15803d;
+    --warn: #b45309;
+    --trace: #c2410c;
+    --grid: #e8e6df;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151513;
+      --card: #1f1f1c;
+      --ink: #f1efe8;
+      --muted: #a09e95;
+      --line: #34332e;
+      --accent: #fb923c;
+      --accent-ink: #1a1208;
+      --good: #4ade80;
+      --warn: #fbbf24;
+      --trace: #fb923c;
+      --grid: #2e2d29;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .step { color: var(--muted); font-weight: 500; margin-right: 6px; }
+  button {
+    font: inherit;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.rec { border-color: var(--accent); color: var(--accent); }
+  button.rec.on, button.rec.primary { background: var(--accent); color: var(--accent-ink); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  select, textarea {
+    font: inherit;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 10px;
+  }
+  textarea { width: 100%; min-height: 90px; font-family: ui-monospace, Menlo, monospace; font-size: .95rem; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+  .status { color: var(--muted); font-size: .9rem; margin-top: 10px; }
+  .status.err { color: var(--warn); }
+  .live { display: flex; align-items: baseline; gap: 14px; margin: 14px 0 6px; }
+  .note { font-size: 3rem; font-weight: 700; line-height: 1; min-width: 4.5ch; font-variant-numeric: tabular-nums; }
+  .cents { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .meter { position: relative; height: 8px; background: var(--grid); border-radius: 4px; margin: 8px 0 12px; }
+  .meter::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: var(--muted); opacity: .5; }
+  .needle { position: absolute; top: -4px; width: 6px; height: 16px; margin-left: -3px; border-radius: 3px; background: var(--accent); left: 50%; transition: left .08s; }
+  canvas { width: 100%; height: 120px; display: block; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); }
+  .results { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+  .stat { border: 1px solid var(--line); border-radius: 10px; padding: 10px; text-align: center; }
+  .stat b { display: block; font-size: 1.4rem; }
+  .stat span { color: var(--muted); font-size: .8rem; }
+  .hist { display: flex; align-items: flex-end; gap: 2px; height: 70px; margin-top: 14px; }
+  .hist div { flex: 1; min-width: 0; background: var(--accent); opacity: .75; border-radius: 2px 2px 0 0; position: relative; }
+  .hist div.c { opacity: 1; }
+  .hist-labels { display: flex; gap: 2px; font-size: 9px; color: var(--muted); }
+  .hist-labels span { flex: 1; min-width: 0; text-align: center; overflow: hidden; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 14px; }
+  .chip { padding: 6px 12px; border-radius: 999px; font-size: .95rem; }
+  .chip.sel { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .hint { color: var(--muted); font-size: .9rem; margin: 0 0 10px; }
+  .summary { font-size: 1.05rem; margin: 0 0 14px; }
+  .opt { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 10px; }
+  .opt.best { border-color: var(--good); }
+  .opt h3 { margin: 0 0 2px; font-size: 1.15rem; }
+  .opt .tag { color: var(--good); font-size: .8rem; font-weight: 600; margin-left: 8px; }
+  .opt p { margin: 0; color: var(--muted); font-size: .9rem; }
+  pre.chords {
+    margin: 10px 0 0; padding: 10px; background: var(--bg); border-radius: 8px;
+    font: .95rem/1.6 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .small-title { font-size: .8rem; color: var(--muted); margin: 14px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sing to Chord</h1>
+  <p class="sub">Sing a song into your mic. We find the key you sing it in, then tell you the chords to play and where to put the capo.</p>
+
+  <section class="card" id="voice">
+    <h2><span class="step">1</span>Sing the song</h2>
+    <p class="hint">Press the button (it turns on your microphone), then sing a verse or chorus of the song in the way that feels comfortable. 20–30 seconds is plenty. Press again to stop.</p>
+    <div class="row">
+      <button class="rec primary" data-mode="song">Sing the song</button>
+      <button id="resetVoice">Reset</button>
+    </div>
+    <div class="live">
+      <div class="note" id="noteName">—</div>
+      <div class="cents" id="centsText"></div>
+    </div>
+    <div class="meter"><div class="needle" id="needle"></div></div>
+    <canvas id="trace" aria-label="Pitch over the last few seconds"></canvas>
+    <div class="status" id="status">Use headphones if music is playing, and sing in a quiet room.</div>
+    <div id="songResult"></div>
+    <div id="histWrap"></div>
+    <details style="margin-top:14px">
+      <summary class="hint" style="cursor:pointer">Optional: measure my vocal range</summary>
+      <div class="row" style="margin-top:10px">
+        <button class="rec" data-mode="low">Lowest note</button>
+        <button class="rec" data-mode="high">Highest note</button>
+        <button class="rec" data-mode="comfort">Sing comfortably</button>
+      </div>
+      <div class="results">
+        <div class="stat"><b id="rLow">—</b><span>lowest</span></div>
+        <div class="stat"><b id="rCenter">—</b><span>comfortable</span></div>
+        <div class="stat"><b id="rHigh">—</b><span>highest</span></div>
+      </div>
+    </details>
+  </section>
+
+  <section class="card" id="song">
+    <h2><span class="step">2</span>Your song</h2>
+    <div>
+      <label for="prog">Chords from the website (optional)</label>
+      <textarea id="prog" spellcheck="false" placeholder="G D Em C&#10;Am7 D7 G"></textarea>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div>
+        <label for="origTonic">Original key of the chords</label>
+        <select id="origTonic"></select>
+      </div>
+      <div>
+        <label for="origMode">&nbsp;</label>
+        <select id="origMode"><option value="maj">Major</option><option value="min">Minor</option></select>
+      </div>
+    </div>
+    <div class="hint" id="origNote" style="margin-top:6px"></div>
+    <div style="margin-top:14px">
+      <label>Key you sing in</label>
+      <div class="chips" id="recChips"></div>
+      <label for="targetKey">Or pick any key</label>
+      <select id="targetKey"></select>
+    </div>
+  </section>
+
+  <section id="out"></section>
+</main>
+
+<script>
+// ==== LOGIC START ====
+const NOTE_SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const NOTE_FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const ROOT_PC = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+const mod = (n, m) => ((n % m) + m) % m;
+
+function useFlats(pc, minor) {
+  return minor ? [0,2,3,5,7,10].includes(pc) : [1,3,5,8,10].includes(pc);
+}
+function pcName(pc, flats) { return (flats ? NOTE_FLAT : NOTE_SHARP)[mod(pc, 12)]; }
+function keyName(pc, minor) { return pcName(pc, useFlats(pc, minor)) + (minor ? 'm' : ''); }
+function midiToName(m) {
+  const r = Math.round(m);
+  return NOTE_SHARP[mod(r, 12)] + (Math.floor(r / 12) - 1);
+}
+
+function rootPc(s) {
+  return mod(ROOT_PC[s[0]] + (s[1] === '#' ? 1 : s[1] === 'b' ? -1 : 0), 12);
+}
+const CHORD_RE = /^([A-G][#b]?)((?:maj|min|dim|aug|sus|add|m|M|[0-9]|[#b+°ø()\-])*)(?:\/([A-G][#b]?))?$/;
+function parseChord(s) {
+  const m = CHORD_RE.exec(s);
+  if (!m) return null;
+  return { root: rootPc(m[1]), qual: m[2], bass: m[3] ? rootPc(m[3]) : null };
+}
+function transposeChord(s, semis, flats) {
+  const p = parseChord(s);
+  if (!p) return s;
+  return pcName(p.root + semis, flats) + p.qual + (p.bass === null ? '' : '/' + pcName(p.bass + semis, flats));
+}
+function transposeText(text, semis, flats) {
+  return text.replace(/\S+/g, tok => transposeChord(tok, semis, flats));
+}
+
+// Tonic whose melody centre (tonic + ~4 semitones) sits on the comfortable note.
+function recommendKeys(center, low, high) {
+  const out = [];
+  for (let pc = 0; pc < 12; pc++) {
+    const tonic = Math.round((center - 4 - pc) / 12) * 12 + pc;
+    let pen = 0;
+    if (low != null)  pen += Math.max(0, low - (tonic - 3));
+    if (high != null) pen += Math.max(0, (tonic + 9) - high);
+    out.push({ pc, tonic, score: Math.abs(tonic + 4 - center) + 2 * pen });
+  }
+  return out.sort((a, b) => a.score - b.score).slice(0, 3);
+}
+
+// Open-chord shape keys a beginner can play, ranked by difficulty.
+const EASE_MAJ = { 7:0, 0:0, 2:1, 9:2, 4:2, 5:5 }; // G C D A E F
+const EASE_MIN = { 4:0, 9:0, 2:1 };                 // Em Am Dm
+function capoOptions(targetPc, minor, maxFret = 7) {
+  const table = minor ? EASE_MIN : EASE_MAJ;
+  const res = [];
+  for (let capo = 0; capo <= maxFret; capo++) {
+    const shapePc = mod(targetPc - capo, 12);
+    if (!(shapePc in table)) continue;
+    res.push({ capo, shapePc, minor, score: table[shapePc] * 1.5 + capo });
+  }
+  return res.sort((a, b) => a.score - b.score).slice(0, 3);
+}
+
+// YIN pitch detection. Returns {freq, clarity} or null.
+function yin(buf, sr, minF = 65, maxF = 1000, thresh = 0.15) {
+  const tauMax = Math.floor(sr / minF), tauMin = Math.max(2, Math.floor(sr / maxF));
+  const W = Math.min(1536, buf.length - tauMax - 1);
+  if (W < 256) return null;
+  const d = new Float32Array(tauMax + 1);
+  for (let tau = 1; tau <= tauMax; tau++) {
+    let sum = 0;
+    for (let i = 0; i < W; i++) { const x = buf[i] - buf[i + tau]; sum += x * x; }
+    d[tau] = sum;
+  }
+  let run = 0;
+  d[0] = 1;
+  for (let tau = 1; tau <= tauMax; tau++) { run += d[tau]; d[tau] = run ? d[tau] * tau / run : 1; }
+  let tau = -1;
+  for (let t = tauMin; t < tauMax; t++) {
+    if (d[t] < thresh) { while (t + 1 < tauMax && d[t + 1] < d[t]) t++; tau = t; break; }
+  }
+  if (tau < 0) return null;
+  let better = tau;
+  if (tau > 1 && tau < tauMax) {
+    const a = d[tau - 1], b = d[tau], c = d[tau + 1], den = a + c - 2 * b;
+    if (den !== 0) better = tau + (a - c) / (2 * den);
+  }
+  return { freq: sr / better, clarity: 1 - d[tau] };
+}
+const freqToMidi = f => 69 + 12 * Math.log2(f / 440);
+const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+const percentile = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+
+// Krumhansl-Schmuckler key profiles (index 0 = tonic).
+const KS_MAJ = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+const KS_MIN = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+function correlate(a, b) {
+  const n = a.length, ma = a.reduce((x, y) => x + y, 0) / n, mb = b.reduce((x, y) => x + y, 0) / n;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < n; i++) { const x = a[i] - ma, y = b[i] - mb; num += x * y; da += x * x; db += y * y; }
+  return da && db ? num / Math.sqrt(da * db) : 0;
+}
+// hist: 12 weights per pitch class. Returns all 24 keys, best first.
+function detectKeys(hist) {
+  const res = [];
+  for (let pc = 0; pc < 12; pc++) {
+    for (const minor of [false, true]) {
+      const prof = (minor ? KS_MIN : KS_MAJ);
+      res.push({ pc, minor, r: correlate(hist, hist.map((_, i) => prof[mod(i - pc, 12)])) });
+    }
+  }
+  return res.sort((a, b) => b.r - a.r);
+}
+// Relative-major pitch class: C major and A minor share chords, so they share this value.
+const majorEquiv = (pc, minor) => minor ? mod(pc + 3, 12) : pc;
+function chordKind(q) {
+  if (/^(dim|°|ø)/.test(q)) return 'd';
+  if (/^m(?!aj)/.test(q) || /^min/.test(q)) return 'm';
+  return 'M';
+}
+// Guess the key of a pasted chord sheet from which chords it uses and where it starts/ends.
+function inferKey(text) {
+  const items = text.split(/\s+/).map(parseChord).filter(Boolean)
+    .map(p => ({ root: p.root, kind: chordKind(p.qual) }));
+  if (items.length < 2) return null;
+  const expect = { 0:'M', 5:'M', 7:'M', 2:'m', 4:'m', 9:'m', 11:'d' };
+  let best = null;
+  for (let mp = 0; mp < 12; mp++) {
+    let base = 0;
+    for (const it of items) {
+      const e = expect[mod(it.root - mp, 12)];
+      if (e === it.kind) base += 1; else if (e) base += 0.3;
+    }
+    for (const minor of [false, true]) {
+      const tonic = mod(mp + (minor ? 9 : 0), 12), kind = minor ? 'm' : 'M';
+      let score = base;
+      for (const it of [items[0], items[items.length - 1]]) if (it.root === tonic && it.kind === kind) score += 2;
+      if (!best || score > best.score) best = { pc: tonic, minor, score };
+    }
+  }
+  return best;
+}
+// Chords that belong to a key, named as they sound.
+function diatonicChords(pc, minor) {
+  const flats = useFlats(pc, minor);
+  const steps = minor ? [[0,'m'],[3,''],[5,'m'],[7,'m'],[8,''],[10,'']]
+                      : [[0,''],[2,'m'],[4,'m'],[5,''],[7,''],[9,'m']];
+  return steps.map(([d, q]) => pcName(pc + d, flats) + q);
+}
+// ==== LOGIC END ====
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+
+const state = {
+  voice: { low: null, high: null, center: null },
+  song: null,                     // {hist[12], keys[], n} from "Sing the song"
+  origPc: -1, origMinor: false,   // -1 = detect from pasted chords
+  target: null, manualTarget: false, prog: ''
+};
+
+function save() {
+  try { localStorage.setItem('sing-to-chord-v2', JSON.stringify(state)); } catch (e) {}
+}
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem('sing-to-chord-v2') || 'null');
+    if (s && s.voice) Object.assign(state, s);
+  } catch (e) {}
+}
+
+// --- microphone & live pitch ---
+let ctx, analyser, stream, buf, raf, lastRun = 0;
+const recent = [];      // last valid midi values for smoothing
+const trace = [];       // {t, midi}
+let rec = null;         // {mode, samples, cand}
+
+async function startMic() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus('Microphone needs HTTPS or localhost. Run: python3 -m http.server', true);
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) {
+    setStatus('Microphone blocked. Allow mic access in your browser and try again.', true);
+    return;
+  }
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = ctx.createMediaStreamSource(stream);
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 4096;
+  src.connect(analyser);
+  buf = new Float32Array(analyser.fftSize);
+  trace.length = 0; recent.length = 0;
+  loop();
+}
+function stopMic() {
+  cancelAnimationFrame(raf);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (ctx) ctx.close();
+  ctx = null; stream = null;
+  showNote(null);
+}
+function setStatus(msg, err) {
+  const el = $('status');
+  el.textContent = msg;
+  el.classList.toggle('err', !!err);
+}
+
+function loop(now = 0) {
+  raf = requestAnimationFrame(loop);
+  if (now - lastRun < 33) return;
+  lastRun = now;
+  analyser.getFloatTimeDomainData(buf);
+  let rms = 0;
+  for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / buf.length);
+  let midi = null;
+  if (rms > 0.01) {
+    const r = yin(buf, ctx.sampleRate);
+    if (r && r.clarity > 0.85) {
+      recent.push(freqToMidi(r.freq));
+      if (recent.length > 5) recent.shift();
+      midi = median(recent);
+    }
+  }
+  if (midi === null) recent.length = 0;
+  trace.push({ t: now, midi });
+  while (trace.length && now - trace[0].t > 8000) trace.shift();
+  showNote(midi);
+  feedRec(midi);
+  drawTrace();
+}
+
+function showNote(midi) {
+  if (midi === null) {
+    $('noteName').textContent = '—';
+    $('centsText').textContent = '';
+    $('needle').style.left = '50%';
+    return;
+  }
+  const cents = Math.round((midi - Math.round(midi)) * 100);
+  $('noteName').textContent = midiToName(midi);
+  $('centsText').textContent = (cents > 0 ? '+' : '') + cents + '¢';
+  $('needle').style.left = (50 + cents) + '%';
+}
+
+function drawTrace() {
+  const c = $('trace'), dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const vals = trace.filter(p => p.midi !== null).map(p => p.midi);
+  if (!vals.length) return;
+  let lo = Math.min(...vals) - 2, hi = Math.max(...vals) + 2;
+  if (hi - lo < 12) { const m = (hi + lo) / 2; lo = m - 6; hi = m + 6; }
+  const css = getComputedStyle(document.documentElement);
+  const y = m => h - ((m - lo) / (hi - lo)) * h;
+  g.font = '10px system-ui';
+  g.fillStyle = css.getPropertyValue('--muted');
+  g.strokeStyle = css.getPropertyValue('--grid');
+  g.lineWidth = 1;
+  for (let m = Math.ceil(lo); m <= hi; m++) {
+    if (mod(m, 12) !== 0 && ![4, 7].includes(mod(m, 12))) continue;
+    g.beginPath(); g.moveTo(0, y(m)); g.lineTo(w, y(m)); g.stroke();
+    g.fillText(midiToName(m), 4, y(m) - 2);
+  }
+  const t1 = trace[trace.length - 1].t;
+  g.strokeStyle = css.getPropertyValue('--trace');
+  g.lineWidth = 2.5;
+  g.lineJoin = 'round';
+  g.beginPath();
+  let pen = false;
+  for (const p of trace) {
+    if (p.midi === null) { pen = false; continue; }
+    const x = w - ((t1 - p.t) / 8000) * w;
+    pen ? g.lineTo(x, y(p.midi)) : g.moveTo(x, y(p.midi));
+    pen = true;
+  }
+  g.stroke();
+}
+
+// --- recording ---
+const REC_LABEL = { song: 'Sing the song', low: 'Lowest note', high: 'Highest note', comfort: 'Sing comfortably' };
+function feedRec(midi) {
+  if (!rec) return;
+  if (midi === null) { rec.cand = []; return; }
+  const cand = rec.cand;
+  if (cand.length && Math.abs(midi - median(cand)) > 0.7) cand.length = 0;
+  cand.push(midi);
+  if (cand.length >= 9) rec.samples.push(median(cand)); // steady for ~300 ms; one sample per frame after that
+  if (rec.mode === 'song' && rec.samples.length % 15 === 0) { $('songResult').textContent = 'Heard ' + (rec.samples.length / 30).toFixed(0) + 's of singing…'; }
+}
+let starting = false;
+async function startRec(mode) {
+  if (starting) return;
+  if (!ctx) {
+    starting = true;
+    setStatus('Waiting for microphone permission…');
+    await startMic();
+    starting = false;
+    if (!ctx) return;
+  }
+  rec = { mode, samples: [], cand: [] };
+  syncRecButtons();
+  setStatus({ song: 'Sing the song…',
+              low: 'Sing your lowest comfortable note and hold it…',
+              high: 'Sing your highest comfortable note and hold it…',
+              comfort: 'Sing a few lines of a song in a relaxed voice…' }[mode]);
+}
+function stopRec() {
+  if (!rec) return;
+  const { mode, samples } = rec;
+  rec = null;
+  stopMic();
+  syncRecButtons();
+  const need = mode === 'song' ? 30 : 5;
+  if (samples.length < need) { setStatus('Not enough steady notes heard. Try again, a bit louder or longer.', true); renderVoice(); return; }
+  const v = state.voice;
+  if (mode === 'song') {
+    const hist = new Array(12).fill(0);
+    samples.forEach(m => { hist[mod(Math.round(m), 12)] += 1; });
+    state.song = { hist, keys: detectKeys(hist).slice(0, 3), n: samples.length };
+  }
+  if (mode === 'low') v.low = Math.round(percentile(samples, 0.1));
+  if (mode === 'high') v.high = Math.round(percentile(samples, 0.9));
+  if (mode === 'comfort') v.center = Math.round(median(samples));
+  setStatus('Saved.');
+  state.manualTarget = false;
+  save(); renderVoice(); renderSong(); renderOut();
+}
+function syncRecButtons() {
+  document.querySelectorAll('button.rec').forEach(b => {
+    const on = rec && rec.mode === b.dataset.mode;
+    b.classList.toggle('on', !!on);
+    b.textContent = on ? 'Stop' : REC_LABEL[b.dataset.mode];
+  });
+}
+
+function renderVoice() {
+  const v = state.voice;
+  $('rLow').textContent = v.low != null ? midiToName(v.low) : '—';
+  $('rHigh').textContent = v.high != null ? midiToName(v.high) : '—';
+  $('rCenter').textContent = v.center != null ? midiToName(v.center) : '—';
+  const sg = state.song;
+  if (!sg) { $('songResult').innerHTML = ''; $('histWrap').innerHTML = ''; return; }
+  const top = sg.keys[0];
+  const pct = Math.round(Math.max(0, top.r) * 100);
+  const conf = top.r >= 0.8 ? 'strong' : top.r >= 0.65 ? 'good' : 'weak';
+  $('songResult').innerHTML =
+    `<p class="summary" style="margin-top:14px">You sang it in <b>${keyName(top.pc, top.minor)}</b> ` +
+    `<span class="hint">(${conf} match, ${pct}%)</span></p>` +
+    (conf === 'weak' ? '<p class="hint">Not very clear. Try singing longer or more steadily, or pick the key yourself in step 2.</p>' : '');
+  const max = Math.max(...sg.hist, 1);
+  const flats = useFlats(top.pc, top.minor);
+  let bars = '', labels = '';
+  for (let pc = 0; pc < 12; pc++) {
+    bars += `<div class="${pc === top.pc ? 'c' : ''}" style="height:${Math.max(2, sg.hist[pc] / max * 100)}%"></div>`;
+    labels += `<span>${pcName(pc, flats)}</span>`;
+  }
+  $('histWrap').innerHTML = `<div class="hist">${bars}</div><div class="hist-labels">${labels}</div>`;
+}
+
+// --- keys ---
+function origKey() {
+  if (state.origPc >= 0) return { pc: state.origPc, minor: state.origMinor, auto: false };
+  const k = inferKey(state.prog);
+  return k ? { pc: k.pc, minor: k.minor, auto: true } : null;
+}
+function candidates() {
+  if (state.song && state.song.keys.length) return state.song.keys.map(k => ({ pc: k.pc, minor: k.minor }));
+  const v = state.voice;
+  return v.center == null ? [] : recommendKeys(v.center, v.low, v.high).map(r => ({ pc: r.pc, minor: false }));
+}
+function currentTarget() {
+  if (state.manualTarget && state.target) return state.target;
+  return candidates()[0] || null;
+}
+
+function renderSong() {
+  const tonics = $('origTonic');
+  if (!tonics.options.length) {
+    tonics.add(new Option('Auto (from chords)', -1));
+    NOTE_SHARP.forEach((n, i) => tonics.add(new Option(NOTE_FLAT[i] !== n ? `${n}/${NOTE_FLAT[i]}` : n, i)));
+  }
+  tonics.value = state.origPc;
+  $('origMode').value = state.origMinor ? 'min' : 'maj';
+  $('origMode').disabled = state.origPc < 0;
+  const ok = origKey();
+  $('origNote').textContent = state.origPc >= 0 ? ''
+    : ok ? `Looks like the chords are in ${keyName(ok.pc, ok.minor)}.`
+         : 'Paste the chords to detect their key, or choose it yourself.';
+
+  const sel = $('targetKey');
+  if (!sel.options.length) {
+    for (const minor of [false, true]) {
+      const g = document.createElement('optgroup');
+      g.label = minor ? 'Minor' : 'Major';
+      for (let pc = 0; pc < 12; pc++) g.appendChild(new Option(keyName(pc, minor), `${pc}:${minor ? 1 : 0}`));
+      sel.appendChild(g);
+    }
+  }
+  const target = currentTarget();
+  sel.value = target ? `${target.pc}:${target.minor ? 1 : 0}` : '0:0';
+
+  const cands = candidates();
+  const fromSong = state.song && state.song.keys.length;
+  $('recChips').innerHTML = cands.length
+    ? cands.map((c, i) => {
+        const on = target && c.pc === target.pc && c.minor === target.minor;
+        return `<button class="chip ${on ? 'sel' : ''}" data-pc="${c.pc}" data-minor="${c.minor ? 1 : 0}">${keyName(c.pc, c.minor)}${i === 0 ? (fromSong ? ' · best match' : ' · fits your range') : ''}</button>`;
+      }).join('')
+    : '<span class="hint">Sing the song in step 1 to detect your key.</span>';
+}
+
+function renderOut() {
+  const out = $('out');
+  const target = currentTarget();
+  if (!target) { out.innerHTML = ''; return; }
+  const { pc, minor } = target;
+  const orig = origKey();
+  const shift = orig ? mod(majorEquiv(pc, minor) - majorEquiv(orig.pc, orig.minor), 12) : null;
+  const soundFlats = useFlats(pc, minor);
+  const prog = state.prog.trim();
+  const semis = n => `${n} semitone${n === 1 ? '' : 's'}`;
+
+  let summary = `You sing it in <b>${keyName(pc, minor)}</b>.`;
+  if (orig && shift === 0) summary += ` The chord sheet is already in that key, so no changes are needed.`;
+  else if (orig) summary += ` The chord sheet is in <b>${keyName(orig.pc, orig.minor)}</b>, so move it ${shift <= 6 ? 'up ' + semis(shift) : 'down ' + semis(12 - shift)}.`;
+
+  let html = `<div class="card"><h2><span class="step">3</span>What to play</h2><p class="summary">${summary}</p>`;
+  if (prog && orig && shift !== 0) {
+    html += `<p class="small-title">Chords in ${keyName(pc, minor)} (how it will sound)</p><pre class="chords">${esc(transposeText(prog, shift, soundFlats))}</pre>`;
+  }
+  const diat = diatonicChords(pc, minor);
+  html += `<p class="small-title">Chords that fit ${keyName(pc, minor)}</p><pre class="chords">${esc(diat.join('   '))}</pre>`;
+
+  html += '<p class="small-title" style="margin-top:18px">Easy ways to play it</p>';
+  capoOptions(pc, minor).forEach((o, i) => {
+    const flats = useFlats(o.shapePc, minor);
+    html += `<div class="opt ${i === 0 ? 'best' : ''}">
+      <h3>${o.capo === 0 ? 'No capo' : 'Capo on fret ' + o.capo}<span class="tag">${i === 0 ? 'easiest' : ''}</span></h3>
+      <p>Play ${keyName(o.shapePc, minor)} shapes · sounds in ${keyName(pc, minor)}</p>`;
+    if (prog && orig) html += `<p class="small-title">Your chord sheet</p><pre class="chords">${esc(transposeText(prog, shift - o.capo, flats))}</pre>`;
+    html += `<p class="small-title">Chords in this position</p><pre class="chords">${esc(diat.map(c => transposeChord(c, -o.capo, flats)).join('   '))}</pre></div>`;
+  });
+  if (prog && !orig) html += '<p class="hint" style="margin-top:12px">Could not tell the key of the pasted chords. Choose it in step 2 to see your chord sheet in each position.</p>';
+  if (!prog) html += '<p class="hint" style="margin-top:12px">Paste the chords from the website in step 2 to see your own chord sheet for each option.</p>';
+  html += '</div>';
+  out.innerHTML = html;
+}
+
+// --- wiring ---
+document.querySelectorAll('button.rec').forEach(b => b.addEventListener('click', () => {
+  if (rec && rec.mode === b.dataset.mode) stopRec();
+  else { if (rec) stopRec(); startRec(b.dataset.mode); }
+}));
+$('resetVoice').addEventListener('click', () => {
+  state.voice = { low: null, high: null, center: null };
+  state.song = null;
+  state.manualTarget = false;
+  save(); renderVoice(); renderSong(); renderOut();
+});
+$('origTonic').addEventListener('change', e => { state.origPc = +e.target.value; save(); renderSong(); renderOut(); });
+$('origMode').addEventListener('change', e => { state.origMinor = e.target.value === 'min'; save(); renderSong(); renderOut(); });
+function pickTarget(pc, minor) { state.target = { pc, minor }; state.manualTarget = true; save(); renderSong(); renderOut(); }
+$('targetKey').addEventListener('change', e => { const [pc, m] = e.target.value.split(':'); pickTarget(+pc, m === '1'); });
+$('recChips').addEventListener('click', e => {
+  const b = e.target.closest('button[data-pc]');
+  if (b) pickTarget(+b.dataset.pc, b.dataset.minor === '1');
+});
+$('prog').addEventListener('input', e => { state.prog = e.target.value; save(); renderSong(); renderOut(); });
+window.addEventListener('resize', () => { if (ctx) drawTrace(); });
+
+load();
+$('prog').value = state.prog || '';
+renderVoice(); renderSong(); renderOut();
+</script>
+</body>
+</html>
