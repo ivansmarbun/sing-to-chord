@@ -207,8 +207,17 @@ function transposeChord(s, semis, flats) {
   if (!p) return s;
   return pcName(p.root + semis, flats) + p.qual + (p.bass === null ? '' : '/' + pcName(p.bass + semis, flats));
 }
+// A line is a chord line only if most of its words parse as chords, so lyrics like "I Am" or "A" are left alone.
+function isChordLine(line) {
+  const toks = line.split(/\s+/).filter(Boolean);
+  return toks.length > 0 && toks.filter(t => parseChord(t)).length / toks.length > 0.5;
+}
+function chordTokens(text) {
+  return text.split('\n').filter(isChordLine).flatMap(l => l.split(/\s+/).filter(parseChord));
+}
 function transposeText(text, semis, flats) {
-  return text.replace(/\S+/g, tok => transposeChord(tok, semis, flats));
+  return text.split('\n').map(line =>
+    isChordLine(line) ? line.replace(/\S+/g, tok => transposeChord(tok, semis, flats)) : line).join('\n');
 }
 
 // Tonic whose melody centre (tonic + ~4 semitones) sits on the comfortable note.
@@ -224,16 +233,22 @@ function recommendKeys(center, low, high) {
   return out.sort((a, b) => a.score - b.score).slice(0, 3);
 }
 
-// Open-chord shape keys a beginner can play, ranked by difficulty.
-const EASE_MAJ = { 7:0, 0:0, 2:1, 9:2, 4:2, 5:5 }; // G C D A E F
-const EASE_MIN = { 4:0, 9:0, 2:1 };                 // Em Am Dm
-function capoOptions(targetPc, minor, maxFret = 7) {
-  const table = minor ? EASE_MIN : EASE_MAJ;
+// How hard a chord is to play as an open shape (0 = open, higher = barre).
+const OPEN_MAJ = [0, 2, 4, 7, 9], OPEN_MIN = [2, 4, 9];
+function chordDifficulty(name) {
+  const p = parseChord(name);
+  if (!p) return 0;
+  const kind = chordKind(p.qual);
+  if (kind === 'M') return OPEN_MAJ.includes(p.root) ? 0 : p.root === 5 ? 1.5 : 3;
+  if (kind === 'm') return OPEN_MIN.includes(p.root) ? 0 : 3;
+  return 3;
+}
+// Rank capo positions by how open-friendly the given chords (as they sound) become.
+function capoOptions(targetPc, minor, chords, maxFret = 7) {
   const res = [];
   for (let capo = 0; capo <= maxFret; capo++) {
-    const shapePc = mod(targetPc - capo, 12);
-    if (!(shapePc in table)) continue;
-    res.push({ capo, shapePc, minor, score: table[shapePc] * 1.5 + capo });
+    const diff = chords.reduce((t, c) => t + chordDifficulty(transposeChord(c, -capo, false)), 0) / chords.length;
+    res.push({ capo, shapePc: mod(targetPc - capo, 12), minor, score: diff + capo * 0.2 });
   }
   return res.sort((a, b) => a.score - b.score).slice(0, 3);
 }
@@ -297,7 +312,7 @@ function chordKind(q) {
 }
 // Guess the key of a pasted chord sheet from which chords it uses and where it starts/ends.
 function inferKey(text) {
-  const items = text.split(/\s+/).map(parseChord).filter(Boolean)
+  const items = chordTokens(text).map(parseChord)
     .map(p => ({ root: p.root, kind: chordKind(p.qual) }));
   if (items.length < 2) return null;
   const expect = { 0:'M', 5:'M', 7:'M', 2:'m', 4:'m', 9:'m', 11:'d' };
@@ -497,12 +512,14 @@ function stopRec() {
   rec = null;
   stopMic();
   syncRecButtons();
-  const need = mode === 'song' ? 30 : 5;
+  const need = mode === 'song' ? 150 : 5; // song: about 5 s of steady notes
   if (samples.length < need) { setStatus('Not enough steady notes heard. Try again, a bit louder or longer.', true); renderVoice(); return; }
   const v = state.voice;
   if (mode === 'song') {
+    // Correct for a singer who is consistently flat or sharp before snapping to semitones.
+    const tuning = median(samples.map(m => m - Math.round(m)));
     const hist = new Array(12).fill(0);
-    samples.forEach(m => { hist[mod(Math.round(m), 12)] += 1; });
+    samples.forEach(m => { hist[mod(Math.round(m - tuning), 12)] += 1; });
     state.song = { hist, keys: detectKeys(hist).slice(0, 3), n: samples.length };
   }
   if (mode === 'low') v.low = Math.round(percentile(samples, 0.1));
@@ -619,7 +636,8 @@ function renderOut() {
   html += `<p class="small-title">Chords that fit ${keyName(pc, minor)}</p><pre class="chords">${esc(diat.join('   '))}</pre>`;
 
   html += '<p class="small-title" style="margin-top:18px">Easy ways to play it</p>';
-  capoOptions(pc, minor).forEach((o, i) => {
+  const soundChords = (prog && orig ? chordTokens(transposeText(prog, shift, soundFlats)) : []);
+  capoOptions(pc, minor, soundChords.length ? soundChords : diat).forEach((o, i) => {
     const flats = useFlats(o.shapePc, minor);
     html += `<div class="opt ${i === 0 ? 'best' : ''}">
       <h3>${o.capo === 0 ? 'No capo' : 'Capo on fret ' + o.capo}<span class="tag">${i === 0 ? 'easiest' : ''}</span></h3>
